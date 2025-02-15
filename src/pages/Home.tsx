@@ -1,125 +1,169 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import toast from 'react-hot-toast';
 
 interface User {
-  id: number;
-  name: string;
-  lastMessage: string;
-  time: string;
+  uid: string;
+  fullName: string;
+  email: string;
+  photoURL?: string;
+  lastLogin: string;
+  lastMessage?: string;
 }
-
-interface Message {
-  id: number;
-  sender: string;
-  message: string;
-  time: string;
-}
-
-// Update the MessagesByUser interface to use a string index signature
-interface MessagesByUser {
-  [key: string]: Message[];
-}
-
-// Dummy data for users
-const dummyUsers: User[] = [
-  { id: 1, name: 'John Doe', lastMessage: 'Hey, how are you?', time: '10:30 AM' },
-  { id: 2, name: 'Jane Smith', lastMessage: 'See you tomorrow!', time: '9:45 AM' },
-  { id: 3, name: 'Mike Johnson', lastMessage: 'Thanks!', time: 'Yesterday' },
-  // Add more users as needed
-];
-
-// Update the object keys to be strings
-const dummyMessagesByUser: MessagesByUser = {
-  '1': [
-    { id: 1, sender: 'John Doe', message: 'Hey, how are you?', time: '10:30 AM' },
-    { id: 2, sender: 'You', message: 'I\'m good, thanks! How about you?', time: '10:31 AM' },
-    { id: 3, sender: 'John Doe', message: 'Doing great! Any plans for the weekend?', time: '10:32 AM' },
-  ],
-  '2': [
-    { id: 1, sender: 'Jane Smith', message: 'Did you finish the project?', time: '9:30 AM' },
-    { id: 2, sender: 'You', message: 'Yes, just submitted it!', time: '9:40 AM' },
-    { id: 3, sender: 'Jane Smith', message: 'See you tomorrow!', time: '9:45 AM' },
-  ],
-  '3': [
-    { id: 1, sender: 'Mike Johnson', message: 'Meeting at 3?', time: 'Yesterday' },
-    { id: 2, sender: 'You', message: 'Sure, works for me', time: 'Yesterday' },
-    { id: 3, sender: 'Mike Johnson', message: 'Thanks!', time: 'Yesterday' },
-  ],
-};
 
 const Home = () => {
-  const [selectedUser, setSelectedUser] = useState<User>(dummyUsers[0]);
-  
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // Fetch all users from Firestore
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, orderBy('lastLogin', 'desc'));
+        const querySnapshot = await getDocs(q);
+        
+        const fetchedUsers = querySnapshot.docs
+          .map(doc => ({
+            uid: doc.id,
+            ...doc.data(),
+          }))
+          .filter(user => user.uid !== currentUser.uid) as User[]; // Exclude current user
+
+        setUsers(fetchedUsers);
+        if (fetchedUsers.length > 0) {
+          setSelectedUser(fetchedUsers[0]);
+        }
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        toast.error('Failed to load users');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, [currentUser.uid]);
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex mt-16">
-      {/* Left sidebar - Users list */}
-      <div className="w-1/5 border-r border-gray-300 bg-white overflow-y-auto">
-        <div className="p-4 bg-gray-100">
-          <h2 className="text-xl font-semibold">Chats</h2>
+      {/* Left sidebar - User list */}
+      <div className="w-1/4 border-r border-gray-300 bg-white overflow-y-auto">
+        <div className="p-4">
+          <h2 className="text-xl font-semibold text-gray-800">Chats</h2>
         </div>
-        {/* Users list */}
-        <div className="divide-y">
-          {dummyUsers.map((user) => (
-            <div 
-              key={user.id} 
-              className={`p-4 hover:bg-gray-100 cursor-pointer ${
-                selectedUser.id === user.id ? 'bg-gray-100' : ''
-              }`}
+        
+        <div className="divide-y divide-gray-200">
+          {users.map((user) => (
+            <div
+              key={user.uid}
               onClick={() => setSelectedUser(user)}
+              className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors duration-200 ${
+                selectedUser?.uid === user.uid ? 'bg-gray-100' : ''
+              }`}
             >
-              <div className="flex justify-between">
-                <h3 className="font-semibold">{user.name}</h3>
-                <span className="text-sm text-gray-500">{user.time}</span>
+              <div className="flex items-center space-x-4">
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.fullName}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-full bg-orange-500 flex items-center justify-center text-white text-xl">
+                    {user.fullName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {user.fullName}
+                  </p>
+                  <p className="text-sm text-gray-500 truncate">
+                    {user.lastMessage || 'No messages yet'}
+                  </p>
+                </div>
+                {user.lastLogin && (
+                  <span className="text-xs text-gray-500">
+                    {new Date(user.lastLogin).toLocaleTimeString([], { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </span>
+                )}
               </div>
-              <p className="text-sm text-gray-600 truncate">{user.lastMessage}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Right side - Chat area */}
-      <div className="w-4/5 flex flex-col bg-gray-50">
-        {/* Chat header */}
-        <div className="p-4 bg-white border-b border-gray-300">
-          <h2 className="font-semibold">{selectedUser.name}</h2>
-        </div>
-
-        {/* Messages area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {dummyMessagesByUser[selectedUser.id.toString()].map((message: Message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.sender === 'You' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[70%] p-3 rounded-lg ${
-                  message.sender === 'You'
-                    ? 'bg-green-100'
-                    : 'bg-white'
-                }`}
-              >
-                <p>{message.message}</p>
-                <span className="text-xs text-gray-500">{message.time}</span>
+      <div className="w-3/4 flex flex-col bg-gray-50">
+        {selectedUser ? (
+          <>
+            {/* Chat header */}
+            <div className="p-4 bg-white border-b border-gray-300 flex items-center space-x-4">
+              {selectedUser.photoURL ? (
+                <img
+                  src={selectedUser.photoURL}
+                  alt={selectedUser.fullName}
+                  className="h-10 w-10 rounded-full object-cover"
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
+                  {selectedUser.fullName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">
+                  {selectedUser.fullName}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {selectedUser.email}
+                </p>
               </div>
             </div>
-          ))}
-        </div>
 
-        {/* Message input */}
-        <div className="p-4 bg-white border-t border-gray-300">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              placeholder="Type a message"
-              className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-            />
-            <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-              Send
-            </button>
+            {/* Messages area */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {/* Messages will be implemented in the next step */}
+              <div className="text-center text-gray-500 mt-4">
+                No messages yet. Start a conversation!
+              </div>
+            </div>
+
+            {/* Message input */}
+            <div className="p-4 bg-white border-t border-gray-300">
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  placeholder="Type a message"
+                  className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+                <button className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors duration-200">
+                  Send
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            Select a user to start chatting
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
 };
 
-export default Home; 
+export default Home;

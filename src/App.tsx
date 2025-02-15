@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import About from './pages/About';
@@ -11,7 +12,8 @@ import './App.css';
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
+      <Toaster position="top-center" />
       <Navbar />
       <div className="min-h-screen bg-gray-50">
         <Routes>
@@ -23,7 +25,7 @@ function App() {
           <Route path="signup" element={<Signup />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </Router>
   );
 }
 

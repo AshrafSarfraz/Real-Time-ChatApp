@@ -1,7 +1,7 @@
 export interface LoginProps {
-  onClose?: () => void;
+  // Remove onClose prop if it exists
 }
 
 export interface SignupProps {
-  onClose?: () => void;
+  // Remove onClose prop if it exists
 } 

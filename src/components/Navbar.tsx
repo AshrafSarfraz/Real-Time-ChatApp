@@ -2,10 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Disclosure } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
-import Modal from './Modal';
-import Login from '../pages/admin/Login';
-import Signup from '../pages/admin/Signup';
-import type { LoginProps, SignupProps } from '../types/auth';
+import { auth, db } from '../firebase/config';
+import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import toast from 'react-hot-toast';
+
+interface UserData {
+  uid: string;
+  fullName: string;
+  email: string;
+  photoURL?: string;
+}
 
 const navigation = [
   { name: 'Home', href: '/' },
@@ -18,8 +25,7 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isSignupOpen, setIsSignupOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
 
   useEffect(() => {
     const handleResize = () => {
@@ -30,43 +36,46 @@ const Navbar = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Monitor route changes
   useEffect(() => {
-    if (location.pathname === '/') {
-      setIsLoginOpen(false);
-      setIsSignupOpen(false);
-    }
-  }, [location.pathname]);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData: UserData = {
+              uid: user.uid,
+              ...userDoc.data() as Omit<UserData, 'uid'>
+            };
+            localStorage.setItem('currentUser', JSON.stringify(userData));
+            setCurrentUser(userData);
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+          toast.error('Error loading user data');
+        }
+      } else {
+        localStorage.removeItem('currentUser');
+        setCurrentUser(null);
+      }
+    });
 
-  const isCurrentPath = (path: string) => {
-    return location.pathname === path;
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('currentUser');
+      setCurrentUser(null);
+      toast.success('Logged out successfully');
+      navigate('/login');
+    } catch (error) {
+      toast.error('Failed to logout');
+    }
   };
 
   const handleLoginClick = () => {
-    setIsLoginOpen(true);
-    setIsSignupOpen(false);
     navigate('/login');
-  };
-
-  const handleSignupClick = () => {
-    setIsSignupOpen(true);
-    setIsLoginOpen(false);
-    navigate('/signup');
-  };
-
-  const handleCloseLogin = () => {
-    setIsLoginOpen(false);
-    navigate('/');
-  };
-
-  const handleCloseSignup = () => {
-    setIsLoginOpen(true);
-    navigate('/login');
-  };
-
-  const handleLoginSuccess = () => {
-    setIsLoginOpen(false); // Close the login modal
-    navigate('/'); // Navigate to home
   };
 
   // Desktop Navbar
@@ -74,7 +83,6 @@ const Navbar = () => {
     <nav className="w-full bg-orange-600 fixed top-0 z-40 shadow-lg">
       <div className="max-w-[2000px] mx-auto px-8">
         <div className="flex h-20 items-center justify-between">
-          {/* Company Name */}
           <div className="flex-shrink-0">
             <Link 
               to="/" 
@@ -84,7 +92,6 @@ const Navbar = () => {
             </Link>
           </div>
 
-          {/* Navigation Links */}
           <div className="flex items-center space-x-8">
             {navigation.map((item) => (
               <Link
@@ -98,26 +105,45 @@ const Navbar = () => {
                   hover:text-orange-200
                   transition-colors 
                   duration-300
-                  ${isCurrentPath(item.href) ? 'border-b-2 border-white' : ''}
+                  ${location.pathname === item.href ? 'border-b-2 border-white' : ''}
                 `}
               >
                 {item.name}
               </Link>
             ))}
-            {/* Auth Links */}
+            
             <div className="flex items-center space-x-4 ml-8">
-              {/* <button
-                onClick={handleLoginClick}
-                className="px-4 py-2 text-white hover:text-orange-200 transition-colors duration-300"
-              >
-                Login
-              </button> */}
-              <button
-                onClick={handleSignupClick}
-                className="px-4 py-2 bg-white text-orange-600 rounded-md hover:bg-orange-50 transition-colors duration-300"
-              >
-                Login/Sign Up
-              </button>
+              {currentUser ? (
+                <>
+                  <div className="flex items-center space-x-3">
+                    {currentUser.photoURL ? (
+                      <img 
+                        src={currentUser.photoURL} 
+                        alt="Profile"
+                        className="w-10 h-10 rounded-full border-2 border-white"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-white text-orange-600 flex items-center justify-center font-bold">
+                        {currentUser.fullName?.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-white">{currentUser.fullName}</span>
+                    <button
+                      onClick={handleLogout}
+                      className="px-4 py-2 bg-white text-orange-600 rounded-md hover:bg-orange-50 transition-colors duration-300"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={handleLoginClick}
+                  className="px-4 py-2 bg-white text-orange-600 rounded-md hover:bg-orange-50 transition-colors duration-300"
+                >
+                  Login/Sign Up
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -125,7 +151,7 @@ const Navbar = () => {
     </nav>
   );
 
-  // Mobile Navbar
+  // Mobile Nav
   const MobileNav = () => (
     <Disclosure as="nav" className="bg-orange-600 fixed w-full top-0 z-40">
       {({ open, close }) => (
@@ -155,36 +181,46 @@ const Navbar = () => {
                   key={item.name}
                   as={Link}
                   to={item.href}
-                  className={`${
-                    isCurrentPath(item.href)
-                      ? 'bg-orange-700 text-white'
-                      : 'text-orange-100 hover:bg-orange-500'
-                  } block px-4 py-3 rounded-md text-base font-medium transition-all duration-200 ease-in-out w-full text-left`}
+                  className={`
+                    block px-4 py-3 rounded-md text-base font-medium transition-all duration-200 ease-in-out w-full text-left
+                    ${location.pathname === item.href ? 'bg-orange-700 text-white' : 'text-orange-100 hover:bg-orange-500'}
+                  `}
                 >
                   {item.name}
                 </Disclosure.Button>
               ))}
-              {/* Auth Links for Mobile */}
-              <div className="pt-4 space-y-2">
+              
+              {currentUser ? (
+                <div className="pt-4 space-y-2">
+                  <div className="flex items-center space-x-3 px-4 py-3">
+                    {currentUser.photoURL ? (
+                      <img 
+                        src={currentUser.photoURL} 
+                        alt="Profile"
+                        className="w-8 h-8 rounded-full border-2 border-white"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-white text-orange-600 flex items-center justify-center font-bold">
+                        {currentUser.fullName?.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-white">{currentUser.fullName}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="block w-full px-4 py-3 bg-white text-orange-600 rounded-md text-base font-medium hover:bg-orange-50 transition-all duration-200"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
                 <button
-                  onClick={() => {
-                    handleLoginClick();
-                    close();
-                  }}
-                  className="block w-full px-4 py-3 text-orange-100 hover:bg-orange-500 rounded-md text-base font-medium transition-all duration-200"
-                >
-                  Login
-                </button>
-                <button
-                  onClick={() => {
-                    handleSignupClick();
-                    close();
-                  }}
+                  onClick={handleLoginClick}
                   className="block w-full px-4 py-3 bg-white text-orange-600 rounded-md text-base font-medium hover:bg-orange-50 transition-all duration-200"
                 >
-                  Sign Up
+                  Login/Sign Up
                 </button>
-              </div>
+              )}
             </div>
           </Disclosure.Panel>
         </>
@@ -195,24 +231,6 @@ const Navbar = () => {
   return (
     <>
       {isMobile ? <MobileNav /> : <DesktopNav />}
-      
-      <Modal 
-        isOpen={isLoginOpen} 
-        onClose={handleCloseLogin}
-      >
-        <Login 
-          onClose={handleLoginSuccess}
-        />
-      </Modal>
-
-      <Modal 
-        isOpen={isSignupOpen} 
-        onClose={handleCloseSignup}
-      >
-        <Signup 
-          onClose={handleCloseSignup}
-        />
-      </Modal>
     </>
   );
 };
