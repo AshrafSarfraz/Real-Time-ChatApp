@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
-import Home from './pages/Home';
+import Home from './pages/admin/home/Home';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Career from './pages/Career';
